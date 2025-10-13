@@ -9,7 +9,18 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 
 export class OrganizationController {
   static get = asyncHandler(async (req: Request, res: Response) => {
-    const orgId = req.user!.orgId!;
+    // Get orgId from params or user's session
+    const orgId = req.params.orgId || req.user!.orgId!;
+
+    // Validate user has access to this organization
+    if (req.params.orgId && req.params.orgId !== req.user!.orgId) {
+      return ResponseFormatter.error(
+        res,
+        'Forbidden',
+        'You do not have access to this organization',
+        403
+      );
+    }
 
     const org = await OrganizationService.getOrganization(orgId);
 
@@ -17,7 +28,19 @@ export class OrganizationController {
   });
 
   static update = asyncHandler(async (req: Request, res: Response) => {
-    const orgId = req.user!.orgId!;
+    // Get orgId from params or user's session
+    const orgId = req.params.orgId || req.user!.orgId!;
+
+    // Validate user has access to this organization
+    if (req.params.orgId && req.params.orgId !== req.user!.orgId) {
+      return ResponseFormatter.error(
+        res,
+        'Forbidden',
+        'You do not have access to this organization',
+        403
+      );
+    }
+
     const data = req.body;
 
     const org = await OrganizationService.updateOrganization(orgId, data);
