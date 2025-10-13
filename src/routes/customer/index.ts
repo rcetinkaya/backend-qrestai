@@ -17,6 +17,7 @@ import passwordRoutes from './password.routes.js';
 import dashboardRoutes from './dashboard.routes.js';
 import teamRoutes from './team.routes.js';
 import aiRoutes from './ai.routes.js';
+import standaloneRoutes from './standalone.routes.js';
 
 const router = Router();
 
@@ -34,5 +35,7 @@ router.use('/password', passwordRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/team', teamRoutes);
 router.use('/organization', aiRoutes);
+// Standalone entity routes (direct access by ID)
+router.use(standaloneRoutes);
 
 export default router;
