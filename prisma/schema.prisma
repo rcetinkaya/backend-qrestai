@@ -1,0 +1,386 @@
+// Prisma Schema for QRestAI - QR Menu System
+// Multi-tenant restaurant menu management system
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "windows"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum Plan {
+  FREE
+  PRO
+  BUSINESS
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum TokenType {
+  ACCESS
+  REFRESH
+}
+
+// ==================== MODELS ====================
+
+/// Organization (Multi-tenant)
+model Organization {
+  id        String      @id @default(cuid())
+  name      String
+  slug      String      @unique
+  status    OrgStatus   @default(ACTIVE)
+  plan      Plan        @default(FREE)
+
+  // AI Credits
+  aiCredits     Int      @default(0)  // Current balance
+  aiCreditsUsed Int      @default(0)  // Total used (analytics)
+  creditResetDate DateTime?           // Next monthly reset date
+
+  // Relations
+  users     UserOrganization[]
+  menus     Menu[]
+  theme     ThemeSetting?
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([slug])
+  @@index([status])
+  @@map("organizations")
+}
+
+/// User accounts
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  emailVerified Boolean   @default(false)
+
+  // Relations
+  organizations     UserOrganization[]
+  refreshTokens     RefreshToken[]
+  passwordResets    PasswordResetToken[]
+  sessions          Session[]
+  activityLogs      ActivityLog[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([email])
+  @@map("users")
+}
+
+/// User-Organization relationship (many-to-many with role)
+model UserOrganization {
+  id     String @id @default(cuid())
+  userId String
+  orgId  String
+  role   Role   @default(VIEWER)
+
+  // Relations
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, orgId])
+  @@index([userId])
+  @@index([orgId])
+  @@map("user_organizations")
+}
+
+/// Refresh tokens for JWT auth
+model RefreshToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean   @default(false)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+/// Menu (belongs to Organization)
+model Menu {
+  id       String  @id @default(cuid())
+  orgId    String
+  name     String
+  locale   String  @default("tr") // tr, en, etc.
+  isActive Boolean @default(true)
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  categories   Category[]
+  qr           QrCode?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId])
+  @@index([isActive])
+  @@map("menus")
+}
+
+/// Category (belongs to Menu)
+model Category {
+  id          String  @id @default(cuid())
+  menuId      String
+  name        String
+  description String?
+  sortOrder   Int     @default(0)
+
+  // Relations
+  menu  Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  items MenuItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([menuId])
+  @@index([sortOrder])
+  @@map("categories")
+}
+
+/// Menu Item (belongs to Category)
+model MenuItem {
+  id          String  @id @default(cuid())
+  categoryId  String
+  name        String
+  description String?
+  price       Float
+  imageUrl    String?
+  isAvailable Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  // Relations
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([isAvailable])
+  @@index([sortOrder])
+  @@map("menu_items")
+}
+
+/// QR Code (one-to-one with Menu)
+model QrCode {
+  id        String @id @default(cuid())
+  menuId    String @unique
+  shortId   String @unique // Short URL identifier (e.g., "abc123")
+  styleJson Json?  // QR code styling options
+
+  // Relations
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shortId])
+  @@map("qr_codes")
+}
+
+/// Theme settings for Organization
+model ThemeSetting {
+  id        String  @id @default(cuid())
+  orgId     String  @unique
+  themeKey  String  @default("default") // default, modern, classic, etc.
+  primary   String? // Primary color (#hex)
+  accent    String? // Accent color (#hex)
+  customCss String? @db.Text // Custom CSS
+
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("theme_settings")
+}
+
+/// Activity log (optional, for audit trail)
+model ActivityLog {
+  id       String @id @default(cuid())
+  userId   String?
+  orgId    String?
+  action   String // "menu.created", "item.updated", etc.
+  details  Json?  // Additional data
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([orgId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+/// Email verification tokens
+model VerificationToken {
+  identifier String   @id
+  token      String   @unique
+  expires    DateTime
+
+  @@index([token])
+  @@map("verification_tokens")
+}
+
+/// Password reset tokens
+model PasswordResetToken {
+  id      String   @id @default(cuid())
+  userId  String
+  token   String   @unique
+  expires DateTime
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_reset_tokens")
+}
+
+/// Sessions for NextAuth
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Subscription Plans (Admin Configurable)
+model SubscriptionPlan {
+  id              String   @id @default(cuid())
+  name            String   @unique // FREE, STARTER, PRO, BUSINESS, ENTERPRISE
+  displayName     String   // "Professional Plan"
+  description     String?  @db.Text
+  price           Float    // Monthly price in USD
+  currency        String   @default("USD")
+
+  // Feature Limits
+  maxMenus        Int      @default(-1) // -1 = unlimited
+  maxItems        Int      @default(-1)
+  maxTeamMembers  Int      @default(-1)
+
+  // AI Credits
+  aiCreditsMonthly Int     @default(0) // Monthly AI credits
+
+  // Features (Boolean flags)
+  hasQrCustomization Boolean @default(false)
+  hasAdvancedAnalytics Boolean @default(false)
+  hasApiAccess    Boolean @default(false)
+  hasWhiteLabel   Boolean @default(false)
+  hasPrioritySupport Boolean @default(false)
+
+  // Visibility
+  isActive        Boolean @default(true)
+  isPublic        Boolean @default(true) // Show on pricing page
+  sortOrder       Int     @default(0)
+
+  // Metadata
+  features        Json?   // Additional features list
+  metadata        Json?   // Custom data
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@index([isActive])
+  @@map("subscription_plans")
+}
+
+/// AI Credit Transactions
+model AICreditTransaction {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String?
+  amount    Int      // Negative for usage, positive for purchase
+  balance   Int      // Balance after transaction
+  type      String   // USAGE, PURCHASE, BONUS, REFUND, MONTHLY_RESET
+  feature   String?  // DESCRIPTION, TRANSLATION, MENU_GEN, etc.
+  metadata  Json?    // Details about transaction
+
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+  @@index([createdAt])
+  @@index([type])
+  @@map("ai_credit_transactions")
+}
+
+/// AI Generated Content History
+model AIGeneratedContent {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String?
+  type      String   // DESCRIPTION, TRANSLATION, MENU, PROMPT, ANALYSIS
+  prompt    String   @db.Text
+  response  String   @db.Text
+  tokensUsed Int
+  approved  Boolean  @default(false)
+
+  // References
+  menuId    String?
+  itemId    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("ai_generated_content")
+}
+
+/// Credit Add-on Packages (Admin Configurable)
+model CreditPackage {
+  id          String   @id @default(cuid())
+  name        String   // "500 Credits", "2500 Credits"
+  credits     Int      // Number of credits
+  price       Float    // Price in USD
+  discount    Int      @default(0) // Discount percentage
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("credit_packages")
+}
