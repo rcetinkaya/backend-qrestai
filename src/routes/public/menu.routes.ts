@@ -6,6 +6,7 @@
 import { Router } from 'express';
 import { prisma } from '../../config/database.js';
 import { NotFoundError } from '../../types/errors.js';
+import { AnalyticsService } from '../../services/analytics.service.js';
 
 const router = Router();
 
@@ -88,24 +89,16 @@ router.get('/:shortId', async (req, res, next) => {
 router.post('/:shortId/scan', async (req, res, _next) => {
   try {
     const { shortId } = req.params;
+    const { viewType = 'QR_SCAN' } = req.body;
 
-    // Update scan count
-    // TODO: Re-implement scan tracking with new schema
-    // await prisma.qrCode.updateMany({
-    //   where: { shortId },
-    //   data: {
-    //     scans: {
-    //       increment: 1,
-    //     },
-    //   },
-    // });
-
-    // Optionally log the scan in ActivityLog
+    // Find QR code and menu
     const qrCode = await prisma.qrCode.findUnique({
       where: { shortId },
       select: {
+        menuId: true,
         menu: {
           select: {
+            id: true,
             orgId: true,
             name: true,
           },
@@ -114,13 +107,27 @@ router.post('/:shortId/scan', async (req, res, _next) => {
     });
 
     if (qrCode) {
+      // Track the view
+      await AnalyticsService.trackMenuView(
+        qrCode.menuId,
+        viewType as 'QR_SCAN' | 'DIRECT_LINK' | 'PREVIEW',
+        {
+          userAgent: req.headers['user-agent'],
+          ipAddress: req.ip || req.headers['x-forwarded-for'] as string,
+          referer: req.headers['referer'],
+          sessionId: (req as any).sessionID,
+        }
+      );
+
+      // Log in activity log
       await prisma.activityLog.create({
         data: {
           orgId: qrCode.menu.orgId,
-          action: 'QR_SCAN',
+          action: viewType === 'QR_SCAN' ? 'QR_SCAN' : 'MENU_VIEW',
           details: {
             shortId,
             menuName: qrCode.menu.name,
+            viewType,
             timestamp: new Date().toISOString(),
             userAgent: req.headers['user-agent'],
           },
@@ -128,10 +135,10 @@ router.post('/:shortId/scan', async (req, res, _next) => {
       });
     }
 
-    res.json({ success: true, message: 'Scan tracked' });
+    res.json({ success: true, message: 'View tracked' });
   } catch (error) {
     // Silent fail for analytics - don't break user experience
-    res.json({ success: true, message: 'Scan tracked' });
+    res.json({ success: true, message: 'View tracked' });
   }
 });
 

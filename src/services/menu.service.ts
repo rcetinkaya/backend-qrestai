@@ -7,6 +7,7 @@ import { prisma } from '../config/database.js';
 import { NotFoundError } from '../types/errors.js';
 import { PaginationUtils } from '../utils/pagination.js';
 import { PaginationParams } from '../types/api.js';
+import { QrCodeService } from './qrcode.service.js';
 
 export class MenuService {
   /**
@@ -30,8 +31,13 @@ export class MenuService {
         take,
         orderBy: { createdAt: 'desc' },
         include: {
-          _count: {
-            select: { categories: true },
+          qr: true,
+          categories: {
+            include: {
+              _count: {
+                select: { items: true },
+              },
+            },
           },
         },
       }),
@@ -48,7 +54,27 @@ export class MenuService {
       }),
     ]);
 
-    return PaginationUtils.formatResponse(menus, total, params || {});
+    // Compute total item counts for each menu
+    const menusWithCounts = menus.map((menu) => {
+      const itemCount = menu.categories.reduce(
+        (sum, category) => sum + category._count.items,
+        0
+      );
+      const categoryCount = menu.categories.length;
+
+      // Remove categories from response, only return counts
+      const { categories, ...menuData } = menu;
+
+      return {
+        ...menuData,
+        _count: {
+          categories: categoryCount,
+          items: itemCount,
+        },
+      };
+    });
+
+    return PaginationUtils.formatResponse(menusWithCounts, total, params || {});
   }
 
   /**
@@ -79,10 +105,30 @@ export class MenuService {
    * Create menu
    */
   static async createMenu(orgId: string, data: { name: string; locale?: string }) {
-    return prisma.menu.create({
+    // Create menu
+    const menu = await prisma.menu.create({
       data: {
         ...data,
         orgId,
+      },
+    });
+
+    // Auto-generate QR code for the menu
+    try {
+      await QrCodeService.generateQrCode(menu.id, orgId);
+    } catch (error) {
+      console.error('Failed to auto-generate QR code:', error);
+      // Don't fail menu creation if QR generation fails
+    }
+
+    // Return menu with QR code included
+    return prisma.menu.findFirst({
+      where: { id: menu.id },
+      include: {
+        qr: true,
+        _count: {
+          select: { categories: true },
+        },
       },
     });
   }
@@ -148,8 +194,8 @@ export class MenuService {
     }
 
     // Create duplicate in transaction
-    return prisma.$transaction(async (tx) => {
-      const newMenu = await tx.menu.create({
+    const newMenu = await prisma.$transaction(async (tx) => {
+      const menu = await tx.menu.create({
         data: {
           name: `${originalMenu.name} (Copy)`,
           locale: originalMenu.locale,
@@ -161,7 +207,7 @@ export class MenuService {
       for (const category of originalMenu.categories) {
         const newCategory = await tx.category.create({
           data: {
-            menuId: newMenu.id,
+            menuId: menu.id,
             name: category.name,
             description: category.description,
             sortOrder: category.sortOrder,
@@ -184,7 +230,26 @@ export class MenuService {
         }
       }
 
-      return newMenu;
+      return menu;
+    });
+
+    // Auto-generate QR code for the duplicated menu
+    try {
+      await QrCodeService.generateQrCode(newMenu.id, orgId);
+    } catch (error) {
+      console.error('Failed to auto-generate QR code for duplicated menu:', error);
+      // Don't fail duplication if QR generation fails
+    }
+
+    // Return menu with QR code included
+    return prisma.menu.findFirst({
+      where: { id: newMenu.id },
+      include: {
+        qr: true,
+        _count: {
+          select: { categories: true },
+        },
+      },
     });
   }
 }

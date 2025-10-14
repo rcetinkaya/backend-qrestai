@@ -134,10 +134,15 @@ model Menu {
   locale   String  @default("tr") // tr, en, etc.
   isActive Boolean @default(true)
 
+  // Analytics counters (denormalized for performance)
+  viewCount    Int @default(0)
+  qrScanCount  Int @default(0)
+
   // Relations
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   categories   Category[]
   qr           QrCode?
+  views        MenuView[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -383,4 +388,32 @@ model CreditPackage {
 
   @@index([isActive])
   @@map("credit_packages")
+}
+
+/// Menu View Analytics
+model MenuView {
+  id        String   @id @default(cuid())
+  menuId    String
+  viewType  String   // QR_SCAN, DIRECT_LINK, PREVIEW
+  userAgent String?  @db.Text
+  ipAddress String?
+  referer   String?  @db.Text
+
+  // Geolocation (optional)
+  country   String?
+  city      String?
+
+  // Session tracking
+  sessionId String?
+
+  // Relations
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([menuId])
+  @@index([viewType])
+  @@index([createdAt])
+  @@index([sessionId])
+  @@map("menu_views")
 }

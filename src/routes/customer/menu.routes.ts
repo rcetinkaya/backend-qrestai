@@ -257,4 +257,48 @@ router.delete('/:id', requireRole(Role.ADMIN), validate(menuIdSchema, 'params'),
  */
 router.post('/:id/duplicate', requireRole(Role.EDITOR), validate(menuIdSchema, 'params'), MenuController.duplicate);
 
+/**
+ * @swagger
+ * /menus/{id}/preview-token:
+ *   post:
+ *     tags: [Menus]
+ *     summary: Generate preview token
+ *     description: Generate a temporary token for menu preview (24h validity)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Menu ID
+ *     responses:
+ *       200:
+ *         description: Preview token generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     token:
+ *                       type: string
+ *                       description: JWT token for preview
+ *                     expiresIn:
+ *                       type: string
+ *                       example: "24h"
+ *                     previewUrl:
+ *                       type: string
+ *                       example: "/preview/menu123?token=xxx"
+ *       404:
+ *         description: Menu not found
+ */
+router.post('/:id/preview-token', validate(menuIdSchema, 'params'), MenuController.generatePreviewToken);
+
 export default router;

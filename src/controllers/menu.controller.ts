@@ -7,6 +7,7 @@ import { MenuService } from '../services/menu.service.js';
 import { ResponseFormatter } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { PaginationParams } from '../types/api.js';
+import jwt from 'jsonwebtoken';
 
 export class MenuController {
   static getAll = asyncHandler(async (req: Request, res: Response) => {
@@ -62,5 +63,32 @@ export class MenuController {
     const menu = await MenuService.duplicateMenu(id, orgId);
 
     return ResponseFormatter.created(res, menu, 'Menu duplicated successfully');
+  });
+
+  static generatePreviewToken = asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const orgId = req.user!.orgId!;
+
+    // Verify menu exists and belongs to org
+    await MenuService.getMenuById(id, orgId);
+
+    // Generate JWT token valid for 24 hours
+    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+    const token = jwt.sign(
+      {
+        menuId: id,
+        orgId,
+        userId: req.user!.userId,
+        type: 'preview',
+      },
+      jwtSecret,
+      { expiresIn: '24h' }
+    );
+
+    return ResponseFormatter.success(res, {
+      token,
+      expiresIn: '24h',
+      previewUrl: `/preview/${id}?token=${token}`,
+    }, 'Preview token generated successfully');
   });
 }
