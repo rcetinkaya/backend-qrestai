@@ -36,6 +36,47 @@ export class AdminService {
   }
 
   /**
+   * Get single organization by ID (admin only)
+   */
+  static async getOrganizationById(orgId: string) {
+    const org = await prisma.organization.findUnique({
+      where: { id: orgId },
+      include: {
+        _count: {
+          select: {
+            users: true,
+            menus: true,
+          },
+        },
+      },
+    });
+
+    if (!org) {
+      throw new Error('Organization not found');
+    }
+
+    return org;
+  }
+
+  /**
+   * Update organization (admin only)
+   */
+  static async updateOrganization(orgId: string, data: {
+    name?: string;
+    slug?: string;
+    plan?: Plan;
+    status?: OrgStatus;
+    aiCredits?: number;
+  }) {
+    const org = await prisma.organization.update({
+      where: { id: orgId },
+      data,
+    });
+
+    return org;
+  }
+
+  /**
    * Update organization status
    */
   static async updateOrganizationStatus(orgId: string, status: OrgStatus) {

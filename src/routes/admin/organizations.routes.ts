@@ -55,6 +55,82 @@ router.get('/', validate(paginationSchema, 'query'), AdminController.getAllOrgan
 
 /**
  * @swagger
+ * /admin/organizations/{orgId}:
+ *   get:
+ *     tags: [Admin - Organizations]
+ *     summary: Get organization by ID
+ *     description: Get single organization details (admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orgId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Organization retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Organization'
+ *   put:
+ *     tags: [Admin - Organizations]
+ *     summary: Update organization
+ *     description: Update organization details (admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orgId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               slug:
+ *                 type: string
+ *               plan:
+ *                 type: string
+ *                 enum: [FREE, BASIC, PREMIUM, ENTERPRISE]
+ *               status:
+ *                 type: string
+ *                 enum: [ACTIVE, SUSPENDED, INACTIVE]
+ *               aiCredits:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Organization updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Organization'
+ */
+router.get('/:orgId', AdminController.getOrganizationById);
+router.put('/:orgId', AdminController.updateOrganization);
+
+/**
+ * @swagger
  * /admin/organizations/{orgId}/status:
  *   patch:
  *     tags: [Admin - Organizations]

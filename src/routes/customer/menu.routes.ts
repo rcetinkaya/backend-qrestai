@@ -13,9 +13,6 @@ import { Role } from '@prisma/client';
 
 const router = Router();
 
-// All routes require authentication
-router.use(authenticate);
-
 /**
  * @swagger
  * /menus:
@@ -64,7 +61,7 @@ router.use(authenticate);
  *                     pagination:
  *                       $ref: '#/components/schemas/Pagination'
  */
-router.get('/', validate(paginationSchema, 'query'), MenuController.getAll);
+router.get('/', authenticate, validate(paginationSchema, 'query'), MenuController.getAll);
 
 /**
  * @swagger
@@ -102,7 +99,7 @@ router.get('/', validate(paginationSchema, 'query'), MenuController.getAll);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/:id', validate(menuIdSchema, 'params'), MenuController.getById);
+router.get('/:id', authenticate, validate(menuIdSchema, 'params'), MenuController.getById);
 
 /**
  * @swagger
@@ -139,7 +136,7 @@ router.get('/:id', validate(menuIdSchema, 'params'), MenuController.getById);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', requireRole(Role.EDITOR), validate(createMenuSchema), MenuController.create);
+router.post('/', authenticate, requireRole(Role.EDITOR), validate(createMenuSchema), MenuController.create);
 
 /**
  * @swagger
@@ -183,7 +180,7 @@ router.post('/', requireRole(Role.EDITOR), validate(createMenuSchema), MenuContr
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.put('/:id', requireRole(Role.EDITOR), validate(menuIdSchema, 'params'), validate(updateMenuSchema), MenuController.update);
+router.put('/:id', authenticate, requireRole(Role.EDITOR), validate(menuIdSchema, 'params'), validate(updateMenuSchema), MenuController.update);
 
 /**
  * @swagger
@@ -217,7 +214,7 @@ router.put('/:id', requireRole(Role.EDITOR), validate(menuIdSchema, 'params'), v
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.delete('/:id', requireRole(Role.ADMIN), validate(menuIdSchema, 'params'), MenuController.delete);
+router.delete('/:id', authenticate, requireRole(Role.ADMIN), validate(menuIdSchema, 'params'), MenuController.delete);
 
 /**
  * @swagger
@@ -255,50 +252,6 @@ router.delete('/:id', requireRole(Role.ADMIN), validate(menuIdSchema, 'params'),
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/:id/duplicate', requireRole(Role.EDITOR), validate(menuIdSchema, 'params'), MenuController.duplicate);
-
-/**
- * @swagger
- * /menus/{id}/preview-token:
- *   post:
- *     tags: [Menus]
- *     summary: Generate preview token
- *     description: Generate a temporary token for menu preview (24h validity)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Menu ID
- *     responses:
- *       200:
- *         description: Preview token generated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     token:
- *                       type: string
- *                       description: JWT token for preview
- *                     expiresIn:
- *                       type: string
- *                       example: "24h"
- *                     previewUrl:
- *                       type: string
- *                       example: "/preview/menu123?token=xxx"
- *       404:
- *         description: Menu not found
- */
-router.post('/:id/preview-token', validate(menuIdSchema, 'params'), MenuController.generatePreviewToken);
+router.post('/:id/duplicate', authenticate, requireRole(Role.EDITOR), validate(menuIdSchema, 'params'), MenuController.duplicate);
 
 export default router;

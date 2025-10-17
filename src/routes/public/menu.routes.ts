@@ -10,14 +10,15 @@ import { AnalyticsService } from '../../services/analytics.service.js';
 
 const router = Router();
 
-// Get menu by QR code shortId (public)
-router.get('/:shortId', async (req, res, next) => {
+// Get menu by ID or QR code shortId (public)
+router.get('/:identifier', async (req, res, next) => {
   try {
-    const { shortId } = req.params;
+    const { identifier } = req.params;
+    let menu = null;
 
-    // Find QR code
+    // Try to find by QR code shortId first
     const qrCode = await prisma.qrCode.findUnique({
-      where: { shortId },
+      where: { shortId: identifier },
       include: {
         menu: {
           include: {
@@ -29,9 +30,6 @@ router.get('/:shortId', async (req, res, next) => {
               },
             },
             categories: {
-              where: {
-                // Only show categories with available items
-              },
               include: {
                 items: {
                   where: {
@@ -51,19 +49,56 @@ router.get('/:shortId', async (req, res, next) => {
       },
     });
 
-    if (!qrCode) {
+    if (qrCode) {
+      menu = qrCode.menu;
+    } else {
+      // If not found by shortId, try by menu ID
+      menu = await prisma.menu.findUnique({
+        where: { id: identifier },
+        include: {
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+          categories: {
+            include: {
+              items: {
+                where: {
+                  isAvailable: true,
+                },
+                orderBy: {
+                  sortOrder: 'asc',
+                },
+              },
+            },
+            orderBy: {
+              sortOrder: 'asc',
+            },
+          },
+        },
+      });
+    }
+
+    if (!menu) {
+      console.error(`Menu not found with identifier: ${identifier}`);
       throw new NotFoundError('Menu not found');
     }
 
+    console.log(`Menu found: ${menu.id}, isActive: ${menu.isActive}`);
+
     // Check if menu is active
-    if (!qrCode.menu.isActive) {
-      throw new NotFoundError('Menu is not available');
+    if (!menu.isActive) {
+      console.warn(`Menu ${menu.id} is not active`);
+      throw new NotFoundError('Menu is not available - Please activate the menu from dashboard');
     }
 
     // Get theme settings for the organization
     const theme = await prisma.themeSetting.findUnique({
       where: {
-        orgId: qrCode.menu.orgId,
+        orgId: menu.orgId,
       },
       select: {
         themeKey: true,
@@ -76,7 +111,7 @@ router.get('/:shortId', async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        menu: qrCode.menu,
+        menu,
         theme,
       },
     });
@@ -86,14 +121,14 @@ router.get('/:shortId', async (req, res, next) => {
 });
 
 // Track QR code scan (analytics)
-router.post('/:shortId/scan', async (req, res, _next) => {
+router.post('/:identifier/scan', async (req, res, _next) => {
   try {
-    const { shortId } = req.params;
+    const { identifier } = req.params;
     const { viewType = 'QR_SCAN' } = req.body;
 
-    // Find QR code and menu
-    const qrCode = await prisma.qrCode.findUnique({
-      where: { shortId },
+    // Find QR code and menu - try both shortId and menuId
+    let qrCode = await prisma.qrCode.findUnique({
+      where: { shortId: identifier },
       select: {
         menuId: true,
         menu: {
@@ -105,6 +140,26 @@ router.post('/:shortId/scan', async (req, res, _next) => {
         },
       },
     });
+
+    // If not found by shortId, try finding by menuId
+    if (!qrCode) {
+      const menu = await prisma.menu.findUnique({
+        where: { id: identifier },
+        select: {
+          id: true,
+          orgId: true,
+          name: true,
+        },
+      });
+
+      if (menu) {
+        // Create a pseudo qrCode object for tracking
+        qrCode = {
+          menuId: menu.id,
+          menu: menu,
+        } as any;
+      }
+    }
 
     if (qrCode) {
       // Track the view
@@ -125,7 +180,7 @@ router.post('/:shortId/scan', async (req, res, _next) => {
           orgId: qrCode.menu.orgId,
           action: viewType === 'QR_SCAN' ? 'QR_SCAN' : 'MENU_VIEW',
           details: {
-            shortId,
+            identifier,
             menuName: qrCode.menu.name,
             viewType,
             timestamp: new Date().toISOString(),

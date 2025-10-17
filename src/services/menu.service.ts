@@ -90,6 +90,12 @@ export class MenuService {
           },
           orderBy: { sortOrder: 'asc' },
         },
+        organization: {
+          select: {
+            name: true,
+            slug: true,
+          },
+        },
         qr: true,
       },
     });
